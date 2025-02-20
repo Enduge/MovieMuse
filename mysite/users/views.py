@@ -4,6 +4,8 @@ from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import login, logout, authenticate
 from django.contrib import messages
 
+from .forms import UpdateAvatarForm
+
 def login_page(request):
     if request.method == 'POST':
         username = request.POST.get('username')
@@ -36,3 +38,15 @@ def register_page(request):
 @login_required
 def profile(request):
     return render(request,'users/profile.html')
+
+@login_required
+def change_avatar(request):
+    user_profile = request.user.profile
+
+    if request.method == "POST":
+        form = UpdateAvatarForm(request.POST,request.FILES,instance=user_profile)
+        if form.is_valid():
+            form.save()
+            return redirect("users:profile")
+    else:
+        form = UpdateAvatarForm(instance=user_profile)
