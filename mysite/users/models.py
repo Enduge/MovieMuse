@@ -1,11 +1,12 @@
-from django.contrib.auth.models import User
 from django.db import models
+from django.contrib.auth.models import User
+from django_resized import ResizedImageField
 
-class Profile(models.Model):
+class Profile(models.Model, ResizedImageField):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    bio = models.TextField()
+    avatar = ResizedImageField(size=[400, 400], default='default.png', upload_to='profile_images')
 
     def __str__(self):
-        return f'{self.user.username} Profile'
+        return self.user.username
 
 
