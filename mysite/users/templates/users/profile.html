@@ -11,11 +11,16 @@
             padding: 20px;
             background-color: #f0f0f0;
         }
+        .account-img{
+            margin: 0 auto;
+        }
     </style>
 </head>
 <body>
     <div class="media-body">
-          <h2 class="account-heading">{{ user.username }}</h2>
+          <img class="account-img" src="{{ user.profile.avatar.url }}"/>
+          <h2 class="account-heading">{{user.username}}</h2>
     </div>
 </body>
 </html>
+
