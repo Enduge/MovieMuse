@@ -116,9 +116,8 @@
             let totalResults = 0;
 
             try {
-                while (true) {
+                while (allMovies.length < 30) {
                     const url = `https://www.omdbapi.com/?apikey=${apiKey}&s=${encodeURIComponent(searchTerm)}&page=${page}&type=movie`;
-
                     const response = await fetch(url);
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
@@ -129,7 +128,6 @@
                     totalResults = parseInt(data.totalResults);
 
                     if (allMovies.length >= totalResults) break;
-
                     page++;
                 }
 
@@ -141,8 +139,17 @@
                 }
 
                 resultsDiv.innerHTML = '';
+                let count = 0;
                 for (const movie of allMovies) {
+                    if (count >= 30) break;
                     const movieDetails = await fetchMovieDetails(movie.imdbID);
+                    
+                    if (movieDetails.Title.toLowerCase().includes("short") || 
+                        movieDetails.Genre.toLowerCase().includes("short") || 
+                        movieDetails.Rated === "N/A" || 
+                        movieDetails.Director === "N/A") {
+                        continue;
+                    }
 
                     const movieCard = document.createElement('div');
                     movieCard.className = 'movie-card';
@@ -152,13 +159,13 @@
                         <div class="movie-info">
                             <div class="movie-title">${movieDetails.Title}</div>
                             <div class="movie-year">${movieDetails.Year}</div>
-                            <div class="movie-type">${movieDetails.Type}</div>
                             <div>Genre: ${movieDetails.Genre}</div>
                             <div>Rated: ${movieDetails.Rated}</div>
                             <div>Director: ${movieDetails.Director}</div>
                         </div>
                     `;
                     resultsDiv.appendChild(movieCard);
+                    count++;
                 }
             } catch (error) {
                 console.error('Search error:', error);
