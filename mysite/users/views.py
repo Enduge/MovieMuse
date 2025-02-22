@@ -14,7 +14,7 @@ def login_page(request):
 
         if user is not None:
             login(request, user)
-            return redirect('homepage')
+            return redirect('movie')
         else:
             messages.info(request, 'Try again! Username or password is incorrect.')
 
@@ -30,7 +30,7 @@ def register_page(request):
         form = UserCreationForm(request.POST)
         if form.is_valid():
             form.save()
-            return redirect("homepage")
+            return redirect('movie')
     else:
         form = UserCreationForm()
     return render(request,"users/register.html",{"form": form})
