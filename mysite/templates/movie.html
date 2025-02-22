@@ -1,87 +1,11 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Movie Search</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f0f0f0;
-        }
-        .search-container {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        #searchInput {
-            padding: 10px;
-            width: 300px;
-            font-size: 16px;
-            border: 2px solid #ddd;
-            border-radius: 4px;
-        }
-        #searchButton {
-            padding: 10px 20px;
-            font-size: 16px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-left: 10px;
-        }
-        #searchButton:hover {
-            background-color: #0056b3;
-        }
-        #results {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 15px;
-        }
-        .movie-card {
-            background: white;
-            border-radius: 8px;
-            padding: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        .movie-card img {
-            width: 100%;
-            height: 250px;
-            object-fit: cover;
-            border-radius: 4px;
-        }
-        .movie-info {
-            margin-top: 8px;
-            font-size: 14px;
-        }
-        .movie-title {
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 3px;
-        }
-        .movie-year {
-            color: #666;
-        }
-        #loading {
-            text-align: center;
-            display: none;
-            font-size: 18px;
-            margin: 20px 0;
-        }
-        .error {
-            color: red;
-            text-align: center;
-            margin: 20px 0;
-        }
-    </style>
-</head>
-<body>
+{% extends 'layout.html' %}
+
+{% block title %}
+{% endblock %}
+
+{% block content %}
     <div class="search-container">
-        <h1>Movie Search</h1>
+        <h1>MovieMuse</h1>
         <input type="text" id="searchInput" placeholder="Enter movie title...">
         <button id="searchButton">Search</button>
     </div>
@@ -143,10 +67,10 @@
                 for (const movie of allMovies) {
                     if (count >= 30) break;
                     const movieDetails = await fetchMovieDetails(movie.imdbID);
-                    
-                    if (movieDetails.Title.toLowerCase().includes("short") || 
-                        movieDetails.Genre.toLowerCase().includes("short") || 
-                        movieDetails.Rated === "N/A" || 
+
+                    if (movieDetails.Title.toLowerCase().includes("short") ||
+                        movieDetails.Genre.toLowerCase().includes("short") ||
+                        movieDetails.Rated === "N/A" ||
                         movieDetails.Director === "N/A") {
                         continue;
                     }
@@ -181,5 +105,4 @@
             }
         });
     </script>
-</body>
-</html>
+{% endblock %}
