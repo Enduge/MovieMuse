@@ -54,6 +54,9 @@ a {
 .password-input {
     margin-bottom: 15px;
 }
+#login-button {
+    margin-left: 0px;
+}
 .account-img{
     margin: 0 auto;
     border-radius: 16px;
