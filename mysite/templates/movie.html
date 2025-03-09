@@ -78,9 +78,32 @@
             const yearToValue = yearTo.value.trim() ? parseInt(yearTo.value.trim()) : null;
 
             if (!searchTerm) {
-                resultsDiv.innerHTML = '<div class="error">Please enter a movie title</div>';
+                resultsDiv.innerHTML = ''; // Clear previous search results
+
+                let errorContainer = document.getElementById('error-wrapper');
+
+                if (!errorContainer) {
+                    errorContainer = document.createElement('div');
+                    errorContainer.id = 'error-wrapper';
+                    document.body.appendChild(errorContainer);
+                } else {
+                    errorContainer.innerHTML = ''; // Clear previous messages
+                }
+
+                const errorMessage = document.createElement('div');
+                errorMessage.classList.add('error');
+                errorMessage.textContent = 'Please enter a movie title';
+
+                errorContainer.appendChild(errorMessage);
                 return;
+            } else {
+                // Remove error message if it exists when a valid search is entered
+                let errorContainer = document.getElementById('error-wrapper');
+                if (errorContainer) {
+                    errorContainer.remove();
+                }
             }
+
 
             loadingDiv.style.display = 'block';
             resultsDiv.innerHTML = '';
