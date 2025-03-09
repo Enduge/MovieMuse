@@ -44,9 +44,11 @@ def change_avatar(request):
     user_profile = request.user.profile
 
     if request.method == "POST":
-        form = UpdateAvatarForm(request.POST,request.FILES,instance=user_profile)
+        form = UpdateAvatarForm(request.POST, request.FILES, instance=user_profile)
         if form.is_valid():
             form.save()
-            return redirect("users:profile")
+            return redirect("users:profile")  # Redirect after a successful update
     else:
         form = UpdateAvatarForm(instance=user_profile)
+
+    return render(request, "users/change_avatar.html", {"form": form})  # Ensure GET requests return a response
