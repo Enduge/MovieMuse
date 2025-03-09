@@ -55,9 +55,9 @@
         const apiKey = '1e9287fc';
         const searchInput = document.getElementById('searchInput');
         const searchButton = document.getElementById('searchButton');
-        const genre = document.getElementById('genreFilter');
-        const rating = document.getElementById('ratingFilter');
-        const director = document.getElementById('directorInput');
+        const genreFilter = document.getElementById('genreFilter');
+        const ratingFilter = document.getElementById('ratingFilter');
+        const directorInput = document.getElementById('directorInput');
         const yearFrom = document.getElementById('yearFrom');
         const yearTo = document.getElementById('yearTo');
         const resultsDiv = document.getElementById('results');
@@ -71,12 +71,12 @@
 
         async function searchMovies() {
             const searchTerm = searchInput.value.trim();
-            const searchTerm = searchInput.value.trim();
             const genreValue = genreFilter.value.trim();
             const ratingValue = ratingFilter.value.trim();
-            const directorValue = directorFilter.value.trim();
-            const yearFromValue = yearFrom.value.trim();
-            const yearToValue = yearTo.value.trim();
+            const directorValue = directorInput.value.trim();
+            const yearFromValue = yearFrom.value.trim() ? parseInt(yearFrom.value.trim()) : null;
+            const yearToValue = yearTo.value.trim() ? parseInt(yearTo.value.trim()) : null;
+
             if (!searchTerm) {
                 resultsDiv.innerHTML = '<div class="error">Please enter a movie title</div>';
                 return;
@@ -118,15 +118,18 @@
                     if (count >= 30) break;
                     const movieDetails = await fetchMovieDetails(movie.imdbID);
 
-                    if (movieDetails.Title.toLowerCase().includes("short") ||
+                    const movieYear = parseInt(movieDetails.Year);
+
+                    if (
                         movieDetails.Genre.toLowerCase().includes("short") ||
                         movieDetails.Rated === "N/A" ||
                         movieDetails.Director === "N/A" ||
-                        (genreValue != "" && !movieDetails.Genre.toLowerCase().includes(genreValue.toLowerCase())) ||
-                        (ratingValue != "" && !movieDetails.Rated.toLowerCase().includes(ratingValue.toLowerCase())) ||
-                        (directorValue != "" && !movieDetails.Director.toLowerCase().includes(directorValue.toLowerCase())) ||
-                        (yearToValue != "" && movieDetails.Year > yearToValue) ||
-                        (yearFromValue != "" && movieDetails.Year < yearFromValue)) {
+                        (genreValue !== "" && !movieDetails.Genre.toLowerCase().includes(genreValue.toLowerCase())) ||
+                        (ratingValue !== "" && movieDetails.Rated.toLowerCase() !== ratingValue.toLowerCase()) ||
+                        (directorValue !== "" && !movieDetails.Director.toLowerCase().includes(directorValue.toLowerCase())) ||
+                        (yearToValue !== null && movieYear > yearToValue) ||
+                        (yearFromValue !== null && movieYear < yearFromValue)
+                    ) {
                         continue;
                     }
 
