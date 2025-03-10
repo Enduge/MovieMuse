@@ -6,6 +6,10 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from .models import Movie, MovieReaction
+from .forms import UpdateAvatarForm, WatchPartyForm, WatchPartyMovieForm
+from .models import WatchParty, WatchPartyMovie
+import random
+
 
 from .forms import UpdateAvatarForm
 
@@ -135,3 +139,56 @@ def react_to_movie(request):
             'action': 'added',
             'message': f'Added {reaction_type} for {movie.title}'
         })
+
+@login_required
+def create_watch_party(request):
+    if request.method == "POST":
+        form = WatchPartyForm(request.POST)
+        if form.is_valid():
+            watch_party = form.save(commit=False)
+            watch_party.host = request.user
+            watch_party.save()
+            watch_party.members.add(request.user)
+            return redirect('users:watch_party_submit', party_id=watch_party.id)  # 🔥 FIXED HERE
+    else:
+        form = WatchPartyForm()
+    return render(request, "users/watchparty_create.html", {"form": form})
+
+@login_required
+def submit_movie_criteria(request, party_id):
+    party = get_object_or_404(WatchParty, id=party_id)
+    if request.method == "POST":
+        form = WatchPartyMovieForm(request.POST)
+        if form.is_valid():
+            movie = form.save(commit=False)
+            movie.party = party
+            movie.save()
+            return redirect('users:watch_party_choose', party_id=party.id)  # 🔥 Fixed redirect
+    else:
+        form = WatchPartyMovieForm()
+    return render(request, "users/watchparty_submit.html", {"form": form, "party": party})
+
+@login_required
+def choose_movie(request, party_id):
+    party = get_object_or_404(WatchParty, id=party_id)
+    movies = list(party.movies.all())
+    selected_movie = random.choice(movies) if movies else None
+    
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':  # Check if it's an AJAX request
+        return JsonResponse({
+            "selected_movie": {
+                "genre": selected_movie.genre if selected_movie else None,
+                "director": selected_movie.director if selected_movie else None,
+                "age_rating": selected_movie.age_rating if selected_movie else None,
+            }
+        })
+    
+    return render(request, "users/watchparty_result.html", {"selected_movie": selected_movie, "party": party})
+
+@login_required
+def watchparty_result(request, party_id):
+    party = get_object_or_404(WatchParty, id=party_id)
+    movies = list(party.movies.all())
+    selected_movie = random.choice(movies) if movies else None
+
+    return render(request, "users/watchparty_result.html", {"selected_movie": selected_movie, "party": party})
