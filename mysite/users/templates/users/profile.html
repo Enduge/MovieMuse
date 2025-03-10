@@ -10,4 +10,44 @@
 
         <a href="{% url 'users:change_avatar' %}">Change Avatar</a>
     </div>
+
+    <div class="movie-lists">
+        <div class="movie-list">
+            <h3>Movies You Like</h3>
+            {% if liked_movies %}
+                <div class="profile-movie-grid">
+                    {% for movie in liked_movies %}
+                        <div class="profile-movie-card">
+                            <img src="{{ movie.poster }}" alt="{{ movie.title }} Poster" onerror="this.src='/api/placeholder/200/300'">
+                            <div class="profile-movie-info">
+                                <div class="profile-movie-title">{{ movie.title }}</div>
+                                <div class="profile-movie-year">{{ movie.year }}</div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="no-movies">You haven't liked any movies yet.</p>
+            {% endif %}
+        </div>
+
+        <div class="movie-list">
+            <h3>Movies You Dislike</h3>
+            {% if disliked_movies %}
+                <div class="profile-movie-grid">
+                    {% for movie in disliked_movies %}
+                        <div class="profile-movie-card">
+                            <img src="{{ movie.poster }}" alt="{{ movie.title }} Poster" onerror="this.src='/api/placeholder/200/300'">
+                            <div class="profile-movie-info">
+                                <div class="profile-movie-title">{{ movie.title }}</div>
+                                <div class="profile-movie-year">{{ movie.year }}</div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="no-movies">You haven't disliked any movies yet.</p>
+            {% endif %}
+        </div>
+    </div>
 {% endblock %}
