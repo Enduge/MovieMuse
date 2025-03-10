@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block head %}
+<link rel="stylesheet" type="text/css" href="{% static 'css/style.css' %}">
+{% endblock %}
+
+{% block title %}Watch Party Movie Selection{% endblock %}
+
+{% block content %}
+    <h1>Selected Movie</h1>
+    <div id="loading">Fetching a random movie...</div>
+    <div id="result"></div>
+
+    <script>
+        const apiKey = '1e9287fc';
+        const genre = "{{ request.GET.genre }}";
+        const rating = "{{ request.GET.rating }}";
+        const director = "{{ request.GET.director }}";
+        const yearFrom = "{{ request.GET.yearFrom }}";
+        const yearTo = "{{ request.GET.yearTo }}";
+        const resultDiv = document.getElementById('result');
+        const loadingDiv = document.getElementById('loading');
+
+        async function fetchMovieDetails(imdbID) {
+            const url = `https://www.omdbapi.com/?apikey=${apiKey}&i=${imdbID}`;
+            const response = await fetch(url);
+            return response.json();
+        }
+
+        async function fetchMovies() {
+            loadingDiv.style.display = 'block';
+            resultDiv.innerHTML = '';
+
+            let allMovies = [];
+            let page = 1;
+            let totalResults = 0;
+
+            try {
+                while (allMovies.length < 30) {
+                    const url = `https://www.omdbapi.com/?apikey=${apiKey}&s=${genre ? encodeURIComponent(genre) : 'movie'}&page=${page}&type=movie`;
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                    const data = await response.json();
+                    if (data.Response !== 'True') break;
+
+                    allMovies = allMovies.concat(data.Search);
+                    totalResults = parseInt(data.totalResults);
+
+                    if (allMovies.length >= totalResults) break;
+                    page++;
+                }
+
+                loadingDiv.style.display = 'none';
+
+                if (allMovies.length === 0) {
+                    resultDiv.innerHTML = `<div class="error">No movies found matching your criteria</div>`;
+                    return;
+                }
+
+                const filteredMovies = [];
+                for (const movie of allMovies) {
+                    const movieDetails = await fetchMovieDetails(movie.imdbID);
+                    const movieYear = parseInt(movieDetails.Year);
+
+                    if (
+                        movieDetails.Genre.toLowerCase().includes("short") ||
+                        movieDetails.Rated === "N/A" ||
+                        movieDetails.Director === "N/A" ||
+                        (genre && !movieDetails.Genre.toLowerCase().includes(genre.toLowerCase())) ||
+                        (rating && movieDetails.Rated.toLowerCase() !== rating.toLowerCase()) ||
+                        (director && !movieDetails.Director.toLowerCase().includes(director.toLowerCase())) ||
+                        (yearTo && movieYear > parseInt(yearTo)) ||
+                        (yearFrom && movieYear < parseInt(yearFrom))
+                    ) {
+                        continue;
+                    }
+                    filteredMovies.push(movieDetails);
+                }
+
+                if (filteredMovies.length === 0) {
+                    resultDiv.innerHTML = `<div class="error">No movies matched your criteria</div>`;
+                    return;
+                }
+
+                const selectedMovie = filteredMovies[Math.floor(Math.random() * filteredMovies.length)];
+
+                resultDiv.innerHTML = `
+                    <div class="watchparty-movie-card">
+                        <img src="${selectedMovie.Poster !== 'N/A' ? selectedMovie.Poster : '/api/placeholder/250/375'}" alt="${selectedMovie.Title} Poster">
+                        <div class="watchparty-movie-info">
+                            <div class="watchparty-movie-title">${selectedMovie.Title}</div>
+                            <div class="watchparty-movie-year">${selectedMovie.Year}</div>
+                            <div>Genre: ${selectedMovie.Genre}</div>
+                            <div>Rated: ${selectedMovie.Rated}</div>
+                            <div>Director: ${selectedMovie.Director}</div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error fetching movie:', error);
+                loadingDiv.style.display = 'none';
+                resultDiv.innerHTML = `<div class="error">Error fetching movie data. Please try again.</div>`;
+            }
+        }
+
+        fetchMovies();
+    </script>
+{% endblock %}
