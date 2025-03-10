@@ -51,6 +51,9 @@
     <div id="loading">Searching...</div>
     <div id="results"></div>
 
+    <!-- Hidden input to store authentication status -->
+    <input type="hidden" id="userAuthenticated" value="{% if user.is_authenticated %}true{% else %}false{% endif %}">
+
     <script>
         const apiKey = '1e9287fc';
         const searchInput = document.getElementById('searchInput');
@@ -62,11 +65,83 @@
         const yearTo = document.getElementById('yearTo');
         const resultsDiv = document.getElementById('results');
         const loadingDiv = document.getElementById('loading');
+        
+        // Function to check if user is authenticated
+        function isUserAuthenticated() {
+            return document.getElementById('userAuthenticated').value === 'true';
+        }
 
         async function fetchMovieDetails(imdbID) {
             const url = `https://www.omdbapi.com/?apikey=${apiKey}&i=${imdbID}`;
             const response = await fetch(url);
             return response.json();
+        }
+
+        // Function to handle like/dislike actions
+        async function reactToMovie(movieData, reactionType) {
+            if (!isUserAuthenticated()) {
+                alert('Please log in to like or dislike movies');
+                window.location.href = "{% url 'users:login' %}";
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('imdb_id', movieData.imdbID);
+            formData.append('title', movieData.Title);
+            formData.append('year', movieData.Year);
+            formData.append('poster', movieData.Poster !== 'N/A' ? movieData.Poster : '');
+            formData.append('genre', movieData.Genre);
+            formData.append('rated', movieData.Rated);
+            formData.append('director', movieData.Director);
+            formData.append('reaction_type', reactionType);
+            
+            try {
+                const response = await fetch("{% url 'users:react_to_movie' %}", {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Toggle button active state based on server response
+                const movieCard = document.querySelector(`[data-imdb-id="${movieData.imdbID}"]`);
+                const likeBtn = movieCard.querySelector('.like-btn');
+                const dislikeBtn = movieCard.querySelector('.dislike-btn');
+                
+                if (data.action === 'added') {
+                    if (reactionType === 'like') {
+                        likeBtn.classList.add('active');
+                        dislikeBtn.classList.remove('active');
+                    } else {
+                        dislikeBtn.classList.add('active');
+                        likeBtn.classList.remove('active');
+                    }
+                } else if (data.action === 'removed') {
+                    if (reactionType === 'like') {
+                        likeBtn.classList.remove('active');
+                    } else {
+                        dislikeBtn.classList.remove('active');
+                    }
+                } else if (data.action === 'updated') {
+                    if (reactionType === 'like') {
+                        likeBtn.classList.add('active');
+                        dislikeBtn.classList.remove('active');
+                    } else {
+                        dislikeBtn.classList.add('active');
+                        likeBtn.classList.remove('active');
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error reacting to movie:', error);
+            }
         }
 
         async function searchMovies() {
@@ -103,7 +178,6 @@
                     errorContainer.remove();
                 }
             }
-
 
             loadingDiv.style.display = 'block';
             resultsDiv.innerHTML = '';
@@ -158,6 +232,7 @@
 
                     const movieCard = document.createElement('div');
                     movieCard.className = 'movie-card';
+                    movieCard.setAttribute('data-imdb-id', movieDetails.imdbID);
 
                     movieCard.innerHTML = `
                         <img src="${movieDetails.Poster !== 'N/A' ? movieDetails.Poster : '/api/placeholder/250/375'}" alt="${movieDetails.Title} Poster">
@@ -167,9 +242,22 @@
                             <div>Genre: ${movieDetails.Genre}</div>
                             <div>Rated: ${movieDetails.Rated}</div>
                             <div>Director: ${movieDetails.Director}</div>
+                            <div class="reaction-buttons">
+                                <button class="like-btn" title="Like">👍</button>
+                                <button class="dislike-btn" title="Dislike">👎</button>
+                            </div>
                         </div>
                     `;
+                    
                     resultsDiv.appendChild(movieCard);
+                    
+                    // Add event listeners to the buttons after adding to DOM
+                    const likeBtn = movieCard.querySelector('.like-btn');
+                    const dislikeBtn = movieCard.querySelector('.dislike-btn');
+                    
+                    likeBtn.addEventListener('click', () => reactToMovie(movieDetails, 'like'));
+                    dislikeBtn.addEventListener('click', () => reactToMovie(movieDetails, 'dislike'));
+                    
                     count++;
                 }
             } catch (error) {
