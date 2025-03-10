@@ -9,4 +9,5 @@ urlpatterns = [
     path('logout/', views.logout_page, name = "logout"),
     path('profile/', views.profile, name = "profile"),
     path('change_avatar/', views.change_avatar, name = "change_avatar"),
+    path('react_to_movie/', views.react_to_movie, name="react_to_movie"),
 ]
