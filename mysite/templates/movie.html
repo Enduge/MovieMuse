@@ -51,6 +51,14 @@
     <div id="loading">Searching...</div>
     <div id="results"></div>
 
+    <!-- Movie Details Modal -->
+    <div id="movieModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <div id="movieDetails"></div>
+        </div>
+    </div>
+
     <!-- Hidden input to store authentication status -->
     <input type="hidden" id="userAuthenticated" value="{% if user.is_authenticated %}true{% else %}false{% endif %}">
 
@@ -65,6 +73,9 @@
         const yearTo = document.getElementById('yearTo');
         const resultsDiv = document.getElementById('results');
         const loadingDiv = document.getElementById('loading');
+        const modal = document.getElementById('movieModal');
+        const movieDetails = document.getElementById('movieDetails');
+        const closeButton = document.getElementsByClassName('close-button')[0];
         
         // Function to check if user is authenticated
         function isUserAuthenticated() {
@@ -72,9 +83,47 @@
         }
 
         async function fetchMovieDetails(imdbID) {
-            const url = `https://www.omdbapi.com/?apikey=${apiKey}&i=${imdbID}`;
+            const url = `https://www.omdbapi.com/?apikey=${apiKey}&i=${imdbID}&plot=full`;
             const response = await fetch(url);
             return response.json();
+        }
+
+        // Function to show movie details in modal
+        function showMovieDetails(movieData) {
+            movieDetails.innerHTML = `
+                <div class="modal-header">
+                    <h2>${movieData.Title} (${movieData.Year})</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-poster">
+                        <img src="${movieData.Poster !== 'N/A' ? movieData.Poster : '/api/placeholder/250/375'}" alt="${movieData.Title} Poster">
+                        <div class="modal-reaction-buttons">
+                            <button class="like-btn modal-like-btn" title="Like" data-imdb-id="${movieData.imdbID}">👍</button>
+                            <button class="dislike-btn modal-dislike-btn" title="Dislike" data-imdb-id="${movieData.imdbID}">👎</button>
+                        </div>
+                    </div>
+                    <div class="modal-info">
+                        <p><strong>Runtime:</strong> ${movieData.Runtime}</p>
+                        <p><strong>Rated:</strong> ${movieData.Rated}</p>
+                        <p><strong>Genre:</strong> ${movieData.Genre}</p>
+                        <p><strong>Director:</strong> ${movieData.Director}</p>
+                        <p><strong>Cast:</strong> ${movieData.Actors}</p>
+                        <p><strong>Plot:</strong> ${movieData.Plot}</p>
+                        <p><strong>Awards:</strong> ${movieData.Awards}</p>
+                        <p><strong>IMDb Rating:</strong> ${movieData.imdbRating}/10 (${movieData.imdbVotes} votes)</p>
+                        ${movieData.BoxOffice ? `<p><strong>Box Office:</strong> ${movieData.BoxOffice}</p>` : ''}
+                    </div>
+                </div>
+            `;
+            
+            // Add event listeners to modal like/dislike buttons
+            const likeBtn = document.querySelector('.modal-like-btn');
+            const dislikeBtn = document.querySelector('.modal-dislike-btn');
+            
+            likeBtn.addEventListener('click', () => reactToMovie(movieData, 'like'));
+            dislikeBtn.addEventListener('click', () => reactToMovie(movieData, 'dislike'));
+            
+            modal.style.display = 'block';
         }
 
         // Function to handle like/dislike actions
@@ -112,30 +161,44 @@
                 
                 // Toggle button active state based on server response
                 const movieCard = document.querySelector(`[data-imdb-id="${movieData.imdbID}"]`);
-                const likeBtn = movieCard.querySelector('.like-btn');
-                const dislikeBtn = movieCard.querySelector('.dislike-btn');
+                let likeBtn = movieCard ? movieCard.querySelector('.like-btn') : null;
+                let dislikeBtn = movieCard ? movieCard.querySelector('.dislike-btn') : null;
+                
+                // Also update the modal buttons if modal is open
+                const modalLikeBtn = document.querySelector('.modal-like-btn');
+                const modalDislikeBtn = document.querySelector('.modal-dislike-btn');
                 
                 if (data.action === 'added') {
                     if (reactionType === 'like') {
-                        likeBtn.classList.add('active');
-                        dislikeBtn.classList.remove('active');
+                        if (likeBtn) likeBtn.classList.add('active');
+                        if (dislikeBtn) dislikeBtn.classList.remove('active');
+                        if (modalLikeBtn) modalLikeBtn.classList.add('active');
+                        if (modalDislikeBtn) modalDislikeBtn.classList.remove('active');
                     } else {
-                        dislikeBtn.classList.add('active');
-                        likeBtn.classList.remove('active');
+                        if (dislikeBtn) dislikeBtn.classList.add('active');
+                        if (likeBtn) likeBtn.classList.remove('active');
+                        if (modalDislikeBtn) modalDislikeBtn.classList.add('active');
+                        if (modalLikeBtn) modalLikeBtn.classList.remove('active');
                     }
                 } else if (data.action === 'removed') {
                     if (reactionType === 'like') {
-                        likeBtn.classList.remove('active');
+                        if (likeBtn) likeBtn.classList.remove('active');
+                        if (modalLikeBtn) modalLikeBtn.classList.remove('active');
                     } else {
-                        dislikeBtn.classList.remove('active');
+                        if (dislikeBtn) dislikeBtn.classList.remove('active');
+                        if (modalDislikeBtn) modalDislikeBtn.classList.remove('active');
                     }
                 } else if (data.action === 'updated') {
                     if (reactionType === 'like') {
-                        likeBtn.classList.add('active');
-                        dislikeBtn.classList.remove('active');
+                        if (likeBtn) likeBtn.classList.add('active');
+                        if (dislikeBtn) dislikeBtn.classList.remove('active');
+                        if (modalLikeBtn) modalLikeBtn.classList.add('active');
+                        if (modalDislikeBtn) modalDislikeBtn.classList.remove('active');
                     } else {
-                        dislikeBtn.classList.add('active');
-                        likeBtn.classList.remove('active');
+                        if (dislikeBtn) dislikeBtn.classList.add('active');
+                        if (likeBtn) likeBtn.classList.remove('active');
+                        if (modalDislikeBtn) modalDislikeBtn.classList.add('active');
+                        if (modalLikeBtn) modalLikeBtn.classList.remove('active');
                     }
                 }
                 
@@ -235,7 +298,10 @@
                     movieCard.setAttribute('data-imdb-id', movieDetails.imdbID);
 
                     movieCard.innerHTML = `
-                        <img src="${movieDetails.Poster !== 'N/A' ? movieDetails.Poster : '/api/placeholder/250/375'}" alt="${movieDetails.Title} Poster">
+                        <div class="movie-poster">
+                            <img src="${movieDetails.Poster !== 'N/A' ? movieDetails.Poster : '/api/placeholder/250/375'}" alt="${movieDetails.Title} Poster">
+                            <div class="view-details">View Details</div>
+                        </div>
                         <div class="movie-info">
                             <div class="movie-title">${movieDetails.Title}</div>
                             <div class="movie-year">${movieDetails.Year}</div>
@@ -250,6 +316,13 @@
                     `;
                     
                     resultsDiv.appendChild(movieCard);
+                    
+                    // Store the movieDetails data for later use
+                    movieCard.movieData = movieDetails;
+                    
+                    // Add click event to view movie details
+                    const posterDiv = movieCard.querySelector('.movie-poster');
+                    posterDiv.addEventListener('click', () => showMovieDetails(movieDetails));
                     
                     // Add event listeners to the buttons after adding to DOM
                     const likeBtn = movieCard.querySelector('.like-btn');
@@ -266,6 +339,18 @@
                 resultsDiv.innerHTML = `<div class="error">Error fetching movie data. Please try again.</div>`;
             }
         }
+
+        // Close modal when clicking the close button
+        closeButton.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+
+        // Close modal when clicking outside of it
+        window.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
 
         searchButton.addEventListener('click', searchMovies);
         searchInput.addEventListener('keypress', (e) => {
