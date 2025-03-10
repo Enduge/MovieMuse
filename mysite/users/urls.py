@@ -10,4 +10,8 @@ urlpatterns = [
     path('profile/', views.profile, name = "profile"),
     path('change_avatar/', views.change_avatar, name = "change_avatar"),
     path('react_to_movie/', views.react_to_movie, name="react_to_movie"),
+    path('watchparty/create/', views.create_watch_party, name="watch_party_create"),
+    path('watchparty/<int:party_id>/submit/', views.submit_movie_criteria, name="watch_party_submit"),
+    path('watchparty/<int:party_id>/choose/', views.choose_movie, name="watch_party_choose"),
+    path('watchparty/<int:party_id>/result/', views.watchparty_result, name="watchparty_result"),
 ]
