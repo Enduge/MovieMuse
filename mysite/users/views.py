@@ -1,6 +1,7 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
 from django.contrib.auth import login, logout, authenticate
 from django.contrib import messages
 from django.http import JsonResponse
@@ -61,6 +62,34 @@ def profile(request):
     }
     
     return render(request, 'users/profile.html', context)
+
+@login_required
+def profile_list(request):
+    profiles = Profile.objects.exclude(user=request.user)
+    return render(request, 'users/profile_list.html', {"profiles":profiles})
+
+@login_required
+def profile_viewer(request, user):
+    user = get_object_or_404(User, username=user)  # or use `id` if it's an ID
+
+    user_profile = get_object_or_404(Profile, user=user)
+
+    liked_reactions = MovieReaction.objects.filter(
+        user=user,
+        reaction_type='like'
+    ).select_related('movie')
+
+    disliked_reactions = MovieReaction.objects.filter(
+        user=user,
+        reaction_type='dislike'
+    ).select_related('movie')
+
+    context = {
+        'profile': user_profile,
+        'liked_movies': [reaction.movie for reaction in liked_reactions],
+        'disliked_movies': [reaction.movie for reaction in disliked_reactions]
+    }
+    return render(request, 'users/profile_viewer.html', context)
 
 @login_required
 def change_avatar(request):
