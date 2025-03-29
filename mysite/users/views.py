@@ -10,6 +10,7 @@ from .models import Movie, MovieReaction
 from .forms import UpdateAvatarForm, WatchPartyForm, WatchPartyMovieForm
 from .models import WatchParty, WatchPartyMovie
 import random
+from .models import Profile
 
 
 from .forms import UpdateAvatarForm
