@@ -11,6 +11,31 @@
         <a href="{% url 'users:change_avatar' %}">Change Avatar</a>
     </div>
 
+    <div class="friend-actions">
+        <a href="{% url 'users:search_users' %}" class="search-users-btn">Search Users</a>
+        <a href="{% url 'users:friend_list' %}" class="view-friends-btn">View Friends</a>
+    </div>
+
+    {% if pending_requests %}
+        <div class="friend-requests">
+            <h3>Friend Requests</h3>
+            <div class="request-list">
+                {% for request in pending_requests %}
+                    <div class="request-card">
+                        <img src="{{ request.sender.profile.avatar.url }}" alt="{{ request.sender.username }}'s avatar" class="request-avatar">
+                        <div class="request-info">
+                            <div class="request-name">{{ request.sender.username }}</div>
+                            <div class="request-actions">
+                                <a href="{% url 'users:accept_friend_request' request.id %}" class="accept-btn">Accept</a>
+                                <a href="{% url 'users:reject_friend_request' request.id %}" class="reject-btn">Decline</a>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
     <div class="movie-lists">
         <div class="movie-list">
             <h3>Movies You Like</h3>
