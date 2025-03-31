@@ -1,17 +1,13 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.forms import UserCreationForm
-from django.contrib.auth.models import User
 from django.contrib.auth import login, logout, authenticate
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
-from .models import Movie, MovieReaction
-from .forms import UpdateAvatarForm, WatchPartyForm, WatchPartyMovieForm
-from .models import WatchParty, WatchPartyMovie
-import random
-from .models import Profile
-
+from django.contrib.auth.models import User
+from django.db.models import Q
+from .models import Movie, MovieReaction, Friendship
 
 from .forms import UpdateAvatarForm
 
@@ -57,40 +53,86 @@ def profile(request):
         reaction_type='dislike'
     ).select_related('movie')
     
+    # Get friend requests
+    pending_requests = Friendship.objects.filter(
+        receiver=request.user,
+        status='pending'
+    ).select_related('sender')
+    
+    # Get accepted friends
+    friends = Friendship.objects.filter(
+        (Q(sender=request.user) | Q(receiver=request.user)),
+        status='accepted'
+    )
+    
+    friend_users = []
+    for friendship in friends:
+        if friendship.sender == request.user:
+            friend_users.append(friendship.receiver)
+        else:
+            friend_users.append(friendship.sender)
+    
     context = {
         'liked_movies': [reaction.movie for reaction in liked_reactions],
-        'disliked_movies': [reaction.movie for reaction in disliked_reactions]
+        'disliked_movies': [reaction.movie for reaction in disliked_reactions],
+        'pending_requests': pending_requests,
+        'friends': friend_users
     }
     
     return render(request, 'users/profile.html', context)
 
 @login_required
-def profile_list(request):
-    profiles = Profile.objects.exclude(user=request.user)
-    return render(request, 'users/profile_list.html', {"profiles":profiles})
-
-@login_required
-def profile_viewer(request, user):
-    user = get_object_or_404(User, username=user)  # or use `id` if it's an ID
-
-    user_profile = get_object_or_404(Profile, user=user)
-
-    liked_reactions = MovieReaction.objects.filter(
-        user=user,
-        reaction_type='like'
-    ).select_related('movie')
-
-    disliked_reactions = MovieReaction.objects.filter(
-        user=user,
-        reaction_type='dislike'
-    ).select_related('movie')
-
+def view_profile(request, username):
+    user = get_object_or_404(User, username=username)
+    
+    # Check if the viewed user is a friend
+    is_friend = Friendship.objects.filter(
+        (Q(sender=request.user, receiver=user) | Q(sender=user, receiver=request.user)),
+        status='accepted'
+    ).exists()
+    
+    # Get friend status
+    friendship_status = None
+    friendship_id = None
+    
+    try:
+        friendship = Friendship.objects.get(
+            (Q(sender=request.user, receiver=user) | Q(sender=user, receiver=request.user))
+        )
+        friendship_status = friendship.status
+        friendship_id = friendship.id
+    except Friendship.DoesNotExist:
+        pass
+    
+    # Get the user's liked and disliked movies (only visible to friends)
+    liked_movies = []
+    disliked_movies = []
+    
+    if is_friend or request.user == user:
+        liked_reactions = MovieReaction.objects.filter(
+            user=user, 
+            reaction_type='like'
+        ).select_related('movie')
+        
+        disliked_reactions = MovieReaction.objects.filter(
+            user=user, 
+            reaction_type='dislike'
+        ).select_related('movie')
+        
+        liked_movies = [reaction.movie for reaction in liked_reactions]
+        disliked_movies = [reaction.movie for reaction in disliked_reactions]
+    
     context = {
-        'profile': user_profile,
-        'liked_movies': [reaction.movie for reaction in liked_reactions],
-        'disliked_movies': [reaction.movie for reaction in disliked_reactions]
+        'profile_user': user,
+        'liked_movies': liked_movies,
+        'disliked_movies': disliked_movies,
+        'is_friend': is_friend,
+        'friendship_status': friendship_status,
+        'friendship_id': friendship_id,
+        'is_self': request.user == user
     }
-    return render(request, 'users/profile_viewer.html', context)
+    
+    return render(request, 'users/view_profile.html', context)
 
 @login_required
 def change_avatar(request):
@@ -171,54 +213,112 @@ def react_to_movie(request):
         })
 
 @login_required
-def create_watch_party(request):
-    if request.method == "POST":
-        form = WatchPartyForm(request.POST)
-        if form.is_valid():
-            watch_party = form.save(commit=False)
-            watch_party.host = request.user
-            watch_party.save()
-            watch_party.members.add(request.user)
-            return redirect('users:watch_party_submit', party_id=watch_party.id)  # 🔥 FIXED HERE
-    else:
-        form = WatchPartyForm()
-    return render(request, "users/watchparty_create.html", {"form": form})
-
-@login_required
-def submit_movie_criteria(request, party_id):
-    party = get_object_or_404(WatchParty, id=party_id)
-    if request.method == "POST":
-        form = WatchPartyMovieForm(request.POST)
-        if form.is_valid():
-            movie = form.save(commit=False)
-            movie.party = party
-            movie.save()
-            return redirect('users:watch_party_choose', party_id=party.id)  # 🔥 Fixed redirect
-    else:
-        form = WatchPartyMovieForm()
-    return render(request, "users/watchparty_submit.html", {"form": form, "party": party})
-
-@login_required
-def choose_movie(request, party_id):
-    party = get_object_or_404(WatchParty, id=party_id)
-    movies = list(party.movies.all())
-    selected_movie = random.choice(movies) if movies else None
+def search_users(request):
+    query = request.GET.get('q', '')
     
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':  # Check if it's an AJAX request
-        return JsonResponse({
-            "selected_movie": {
-                "genre": selected_movie.genre if selected_movie else None,
-                "director": selected_movie.director if selected_movie else None,
-                "age_rating": selected_movie.age_rating if selected_movie else None,
-            }
-        })
+    if query:
+        # Search for users by username
+        users = User.objects.filter(username__icontains=query).exclude(id=request.user.id)
+        
+        # Get friendship status for each user
+        user_data = []
+        for user in users:
+            friendship_status = None
+            friendship_id = None
+            
+            try:
+                friendship = Friendship.objects.get(
+                    (Q(sender=request.user, receiver=user) | Q(sender=user, receiver=request.user))
+                )
+                friendship_status = friendship.status
+                friendship_id = friendship.id
+            except Friendship.DoesNotExist:
+                pass
+                
+            user_data.append({
+                'user': user,
+                'friendship_status': friendship_status,
+                'friendship_id': friendship_id
+            })
+    else:
+        user_data = []
     
-    return render(request, "users/watchparty_result.html", {"selected_movie": selected_movie, "party": party})
+    return render(request, 'users/search_users.html', {'user_data': user_data, 'query': query})
 
 @login_required
-def watchparty_result(request, party_id):
-    party = get_object_or_404(WatchParty, id=party_id)
-    movies = list(party.movies.all())
-    selected_movie = random.choice(movies) if movies else None
+def send_friend_request(request, user_id):
+    receiver = get_object_or_404(User, id=user_id)
+    
+    # Check if friendship already exists
+    if Friendship.objects.filter(
+        (Q(sender=request.user, receiver=receiver) | Q(sender=receiver, receiver=request.user))
+    ).exists():
+        messages.info(request, 'A friendship request already exists with this user.')
+        return redirect('users:search_users')
+    
+    # Create friendship request
+    Friendship.objects.create(
+        sender=request.user,
+        receiver=receiver,
+        status='pending'
+    )
+    
+    messages.success(request, f'Friend request sent to {receiver.username}!')
+    return redirect('users:search_users')
 
-    return render(request, "users/watchparty_result.html", {"selected_movie": selected_movie, "party": party})
+@login_required
+def accept_friend_request(request, friendship_id):
+    friendship = get_object_or_404(Friendship, id=friendship_id, receiver=request.user)
+    friendship.status = 'accepted'
+    friendship.save()
+    
+    messages.success(request, f'You are now friends with {friendship.sender.username}!')
+    return redirect('users:profile')
+
+@login_required
+def reject_friend_request(request, friendship_id):
+    friendship = get_object_or_404(Friendship, id=friendship_id, receiver=request.user)
+    friendship.status = 'rejected'
+    friendship.save()
+    
+    messages.info(request, f'Friend request from {friendship.sender.username} declined.')
+    return redirect('users:profile')
+
+@login_required
+def remove_friend(request, friendship_id):
+    # First try to get the friendship
+    friendship = get_object_or_404(Friendship, id=friendship_id, status='accepted')
+    
+    # Check if the user is part of this friendship
+    if friendship.sender != request.user and friendship.receiver != request.user:
+        messages.error(request, "You don't have permission to remove this friendship.")
+        return redirect('users:friend_list')
+    
+    other_user = friendship.receiver if friendship.sender == request.user else friendship.sender
+    friendship.delete()
+    
+    messages.info(request, f'You are no longer friends with {other_user.username}.')
+    return redirect('users:friend_list')
+
+@login_required
+def friend_list(request):
+    # Get accepted friends
+    friendships = Friendship.objects.filter(
+        (Q(sender=request.user) | Q(receiver=request.user)),
+        status='accepted'
+    ).select_related('sender', 'receiver')
+    
+    friends = []
+    for friendship in friendships:
+        if friendship.sender == request.user:
+            friends.append({
+                'user': friendship.receiver,
+                'friendship_id': friendship.id
+            })
+        else:
+            friends.append({
+                'user': friendship.sender,
+                'friendship_id': friendship.id
+            })
+    
+    return render(request, 'users/friend_list.html', {'friends': friends})
