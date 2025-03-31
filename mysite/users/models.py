@@ -41,21 +41,22 @@ class MovieReaction(models.Model):
     def __str__(self):
         return f"{self.user.username} {self.reaction_type}d {self.movie.title}"
 
-class WatchParty(models.Model):
-    name = models.CharField(max_length=100)
-    host = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hosted_parties')
-    members = models.ManyToManyField(User, related_name='watch_parties')
+
+class Friendship(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_friendships')
+    receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_friendships')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
-
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ['sender', 'receiver']
+        
     def __str__(self):
-        return self.name
-
-class WatchPartyMovie(models.Model):
-    party = models.ForeignKey(WatchParty, on_delete=models.CASCADE, related_name='movies')
-    genre = models.CharField(max_length=100)
-    director = models.CharField(max_length=100, blank=True, null=True)
-    age_rating = models.CharField(max_length=10, blank=True, null=True)
-    year_range = models.CharField(max_length=20, blank=True, null=True)
-
-    def __str__(self):
-        return f"{self.party.name} - {self.genre}"
+        return f"{self.sender.username} -> {self.receiver.username} ({self.status})"
