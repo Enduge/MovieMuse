@@ -1,0 +1,82 @@
+{% extends 'layout.html' %}
+
+{% block title %}
+{% endblock %}
+
+{% block content %}
+    <div class="media-body">
+        <img class="account-img" src="{{ profile_user.profile.avatar.url }}"/>
+        <h2 class="account-heading">{{ profile_user.username }}</h2>
+        
+        {% if is_self %}
+            <a href="{% url 'users:change_avatar' %}">Change Avatar</a>
+        {% else %}
+            <div class="friend-status-container">
+                {% if friendship_status == 'accepted' %}
+                    <span class="friend-status">You are friends</span>
+                    <a href="{% url 'users:remove_friend' friendship_id %}" class="remove-friend-btn">Remove Friend</a>
+                {% elif friendship_status == 'pending' %}
+                    {% if profile_user == request.user %}
+                        <span class="pending-status">This user sent you a friend request</span>
+                        <div class="friend-request-actions">
+                            <a href="{% url 'users:accept_friend_request' friendship_id %}" class="accept-btn">Accept</a>
+                            <a href="{% url 'users:reject_friend_request' friendship_id %}" class="reject-btn">Decline</a>
+                        </div>
+                    {% else %}
+                        <span class="pending-status">Friend request sent</span>
+                    {% endif %}
+                {% elif friendship_status == 'rejected' %}
+                    <span class="rejected-status">Friend request was declined</span>
+                {% else %}
+                    <a href="{% url 'users:send_friend_request' profile_user.id %}" class="friend-request-btn">Add Friend</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="movie-lists">
+        {% if is_friend or is_self %}
+            <div class="movie-list">
+                <h3>Movies {{ profile_user.username }} Likes</h3>
+                {% if liked_movies %}
+                    <div class="profile-movie-grid">
+                        {% for movie in liked_movies %}
+                            <div class="profile-movie-card">
+                                <img src="{{ movie.poster }}" alt="{{ movie.title }} Poster" onerror="this.src='/api/placeholder/200/300'">
+                                <div class="profile-movie-info">
+                                    <div class="profile-movie-title">{{ movie.title }}</div>
+                                    <div class="profile-movie-year">{{ movie.year }}</div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="no-movies">{{ profile_user.username }} hasn't liked any movies yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="movie-list">
+                <h3>Movies {{ profile_user.username }} Dislikes</h3>
+                {% if disliked_movies %}
+                    <div class="profile-movie-grid">
+                        {% for movie in disliked_movies %}
+                            <div class="profile-movie-card">
+                                <img src="{{ movie.poster }}" alt="{{ movie.title }} Poster" onerror="this.src='/api/placeholder/200/300'">
+                                <div class="profile-movie-info">
+                                    <div class="profile-movie-title">{{ movie.title }}</div>
+                                    <div class="profile-movie-year">{{ movie.year }}</div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="no-movies">{{ profile_user.username }} hasn't disliked any movies yet.</p>
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="private-profile">
+                <p>You need to be friends with {{ profile_user.username }} to see their movie preferences.</p>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
