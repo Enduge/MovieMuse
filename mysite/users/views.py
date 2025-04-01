@@ -12,6 +12,22 @@ from .forms import UpdateAvatarForm, WatchPartyForm, WatchPartyMovieForm
 from .models import WatchParty, WatchPartyMovie
 import random
 from .forms import UpdateAvatarForm
+from collections import Counter
+import requests
+from django.conf import settings
+from datetime import datetime
+TMDB_API_KEY = "9069e9679489f7393d82ea5f5af0e201"
+def get_tmdb_id_from_imdb(imdb_id):
+    try:
+        response = requests.get(
+            f"https://api.themoviedb.org/3/find/{imdb_id}",
+            params={"api_key": TMDB_API_KEY, "external_source": "imdb_id"}
+        )
+        response.raise_for_status()
+        results = response.json().get("movie_results", [])
+        return str(results[0]["id"]) if results else None
+    except requests.RequestException:
+        return None
 
 def login_page(request):
     if request.method == 'POST':
@@ -178,6 +194,12 @@ def react_to_movie(request):
             'director': director
         }
     )
+
+    if not movie.tmdb_id:
+        tmdb_id = get_tmdb_id_from_imdb(imdb_id)
+        if tmdb_id:
+            movie.tmdb_id = tmdb_id
+            movie.save()
     
     # Check if the user already has a reaction to this movie
     try:
@@ -372,8 +394,376 @@ def choose_movie(request, party_id):
 
 @login_required
 def watchparty_result(request, party_id):
+    user = request.user
     party = get_object_or_404(WatchParty, id=party_id)
-    movies = list(party.movies.all())
-    selected_movie = random.choice(movies) if movies else None
+    
+    # Get all user reactions
+    user_reactions = MovieReaction.objects.filter(user=user).select_related('movie')
+    liked_movies = [r.movie for r in user_reactions if r.reaction_type == 'like']
+    disliked_movies = [r.movie for r in user_reactions if r.reaction_type == 'dislike']
+    
+    # Get all movie IDs the user has already rated
+    rated_movie_ids = {m.imdb_id for m in liked_movies + disliked_movies}
+    
+    # Get guaranteed recommendation with reasoning
+    recommendation_result = get_guaranteed_recommendation(liked_movies, disliked_movies, rated_movie_ids)
+    
+    # Extract preferences for display
+    preferences = analyze_preferences(liked_movies, disliked_movies)
+    preferred_genres = [g for g, _ in preferences['genres'].most_common(3) 
+                       if g not in preferences['disliked_genres']]
+    disliked_genres = list(preferences['disliked_genres'].keys())
+    
+    # Calculate year range
+    if preferences['years']:
+        avg_year = sum(preferences['years']) / len(preferences['years'])
+        year_range = (int(avg_year - 5), int(avg_year + 5))
+    else:
+        year_range = (datetime.now().year - 5, datetime.now().year)
+    
+    return render(request, "users/watchparty_result.html", {
+        "party": party,
+        "recommended_movie": recommendation_result['movie'],
+        "is_fallback": recommendation_result['is_fallback'],
+        "preferred_genres": preferred_genres,
+        "disliked_genres": disliked_genres,
+        "year_range": year_range,
+        "preferred_ratings": [r for r, _ in preferences['ratings'].most_common(2)],
+        "match_reasons": recommendation_result.get('reasons', {}),
+        "now": datetime.now()
+    })
 
-    return render(request, "users/watchparty_result.html", {"selected_movie": selected_movie, "party": party})
+def get_guaranteed_recommendation(liked_movies, disliked_movies, rated_movie_ids):
+    """Returns at least one recommendation with reasoning data"""
+    # Get all IDs the user has rated (both IMDB and TMDB)
+    rated_imdb_ids = {m.imdb_id for m in liked_movies + disliked_movies}
+    rated_tmdb_ids = {m.tmdb_id for m in liked_movies + disliked_movies if m.tmdb_id}
+    rated_movie_ids = rated_imdb_ids | rated_tmdb_ids  # Merge both ID sets
+
+    if not liked_movies:
+        return {
+            'movie': get_quality_fallback(),
+            'is_fallback': True,
+            'reasons': {'fallback': 'No liked movies to base recommendations on'}
+        }
+    
+    preferences = analyze_preferences(liked_movies, disliked_movies)
+    current_year = datetime.now().year
+    
+    # Try 4 levels of increasingly relaxed searches
+    for level in range(4):
+        recommendation = find_tmdb_recommendation(
+            preferences, 
+            rated_movie_ids,
+            strict=(level == 0),
+            relaxation_level=level
+        )
+        if recommendation:
+            # Add year context to reasons
+            release_year = int(recommendation['year']) if recommendation['year'].isdigit() else None
+            if release_year:
+                if 'year' not in recommendation['match_reasons']:
+                    if release_year >= current_year - 3:
+                        recommendation['match_reasons']['year'] = f"Recent release ({release_year})"
+                    else:
+                        recommendation['match_reasons']['year'] = f"From {release_year}"
+            
+            return {
+                'movie': recommendation,
+                'is_fallback': (level > 0),
+                'reasons': recommendation['match_reasons']
+            }
+    
+    # Final fallback with proper year context
+    fallback = get_quality_fallback()
+    release_year = int(fallback['year']) if fallback['year'].isdigit() else None
+    if release_year:
+        if release_year >= current_year - 3:
+            fallback['match_reasons']['fallback'] = 'Popular recent release'
+        else:
+            fallback['match_reasons']['fallback'] = f'Popular film from {release_year}'
+    
+    return {
+        'movie': fallback,
+        'is_fallback': True,
+        'reasons': fallback['match_reasons']
+    }
+
+def analyze_preferences(liked_movies, disliked_movies):
+    """Analyzes user's liked/disliked movies to determine preferences"""
+    preferences = {
+        'genres': Counter(),
+        'years': [],
+        'ratings': Counter(),
+        'disliked_genres': Counter(),
+        'disliked_directors': Counter()
+    }
+    
+    # Analyze liked movies
+    for movie in liked_movies:
+        if movie.genre:
+            genres = [g.strip().lower() for g in movie.genre.split(',')]
+            preferences['genres'].update(genres)
+        if movie.year:
+            try:
+                year = int(movie.year)
+                preferences['years'].append(year)
+            except ValueError:
+                pass
+        if movie.rated:
+            preferences['ratings'][movie.rated] += 1
+    
+    # Analyze disliked movies
+    for movie in disliked_movies:
+        if movie.genre:
+            genres = [g.strip().lower() for g in movie.genre.split(',')]
+            preferences['disliked_genres'].update(genres)
+        if movie.director:
+            directors = [d.strip() for d in movie.director.split(',')]
+            preferences['disliked_directors'].update(directors)
+    
+    return preferences
+
+def find_tmdb_recommendation(preferences, rated_movie_ids, strict=True, relaxation_level=0):
+    """Finds recommendations using TMDB API with validation and reasoning"""
+    params = build_tmdb_params(preferences, strict, relaxation_level)
+    current_year = datetime.now().year
+    
+    try:
+        response = requests.get(
+            "https://api.themoviedb.org/3/discover/movie",
+            params=params,
+            timeout=5
+        )
+        response.raise_for_status()
+        results = response.json().get('results', [])
+        
+        for movie in results:
+            # Skip if TMDB ID or IMDB ID is already rated
+            if (str(movie.get('id')) in rated_movie_ids or 
+                str(movie.get('imdb_id')) in rated_movie_ids):
+                continue
+                
+            details = get_tmdb_movie_details(movie['id'])
+            if not details or not is_valid_movie(movie, details):
+                continue
+                
+            # Initialize match reasons
+            match_reasons = {}
+            movie_genres = {g['name'].lower(): g['id'] for g in details.get('genres', [])}
+            directors = [d['name'] for d in details.get('credits', {}).get('crew', []) 
+                        if d['job'] == 'Director']
+            release_year = int(movie.get('release_date', '')[:4]) if movie.get('release_date') else None
+            
+            # Check genre matches
+            matched_genres = [g for g in preferences['genres'] if g in movie_genres]
+            if matched_genres:
+                match_reasons['genres'] = [g.title() for g in matched_genres[:3]]
+            
+            # Check year match with context
+            if release_year:
+                if preferences['years']:
+                    avg_year = sum(preferences['years']) / len(preferences['years'])
+                    year_diff = abs(release_year - avg_year)
+                    if year_diff <= 5 + (relaxation_level * 3):
+                        if release_year >= current_year - 3:
+                            match_reasons['year'] = f"Recent release ({release_year})"
+                        else:
+                            match_reasons['year'] = f"From {release_year} (matches your preferred era)"
+                else:
+                    if release_year >= current_year - 3:
+                        match_reasons['year'] = f"Recent release ({release_year})"
+                    else:
+                        match_reasons['year'] = f"From {release_year}"
+            
+            # Check rating match
+            content_rating = get_content_rating(details)
+            if content_rating in preferences['ratings']:
+                match_reasons['rating'] = content_rating
+            
+            # Check director match
+            for director in directors:
+                if director in preferences['genres']:
+                    match_reasons['director'] = director
+                    break
+            
+            # Skip if contains blacklisted elements (unless in fallback mode)
+            if strict or relaxation_level < 3:
+                if any(dg in movie_genres for dg in preferences['disliked_genres']):
+                    continue
+                if any(dd in directors for dd in preferences['disliked_directors']):
+                    continue
+            
+            movie_result = format_movie_result(movie, details)
+            movie_result['match_reasons'] = match_reasons
+            return movie_result
+            
+    except requests.RequestException:
+        pass
+    
+    return None
+
+def build_tmdb_params(preferences, strict, relaxation_level):
+    """Builds TMDB API parameters with relaxation levels"""
+    params = {
+        "api_key": TMDB_API_KEY,
+        "language": "en-US",
+        "sort_by": "popularity.desc",
+        "include_adult": False,
+        "page": 1
+    }
+    
+    # Year range with relaxation
+    if preferences['years']:
+        avg_year = sum(preferences['years']) / len(preferences['years'])
+        year_range = 5 + (relaxation_level * 3)
+        params["primary_release_date.gte"] = f"{int(avg_year - year_range)}-01-01"
+        params["primary_release_date.lte"] = f"{int(avg_year + year_range)}-12-31"
+    else:
+        params["primary_release_date.gte"] = f"{datetime.now().year - (5 + relaxation_level * 2)}-01-01"
+    
+    # Genres with relaxation
+    if strict or relaxation_level < 2:
+        top_genres = [
+            g for g, _ in preferences['genres'].most_common() 
+            if g not in preferences['disliked_genres']
+        ]
+        if top_genres:
+            genre_map = get_genre_map()
+            genre_ids = [str(genre_map[g]) for g in top_genres[:3 - relaxation_level] if g in genre_map]
+            if genre_ids:
+                params["with_genres"] = ",".join(genre_ids)
+    
+    # Age rating (strict mode only)
+    if strict and preferences['ratings']:
+        cert_map = {'G': 'G', 'PG': 'PG', 'PG-13': 'PG-13', 'R': 'R', 'NC-17': 'NC-17'}
+        top_rating = preferences['ratings'].most_common(1)[0][0]
+        if top_rating in cert_map:
+            params["certification_country"] = 'US'
+            params["certification"] = cert_map[top_rating]
+    
+    return params
+
+def is_valid_movie(movie_data, details):
+    """Validates movie meets all quality criteria"""
+    # Basic TMDB checks
+    if not movie_data.get('title') or not movie_data.get('release_date'):
+        return False
+    if movie_data.get('vote_count', 0) < 50:
+        return False
+    if movie_data.get('adult', False):
+        return False
+    
+    # Convert to OMDb-like structure for validation
+    fake_omdb = {
+        'Genre': ', '.join([g['name'] for g in details.get('genres', [])]),
+        'Rated': get_content_rating(details),
+        'Director': ', '.join([d['name'] for d in details.get('credits', {}).get('crew', []) 
+                   if d['job'] == 'Director'][:3]) or 'N/A'
+    }
+    
+    # Replicate movie.html validation
+    if ('short' in fake_omdb['Genre'].lower() or 
+        fake_omdb['Rated'] == 'N/A' or 
+        fake_omdb['Director'] == 'N/A'):
+        return False
+        
+    # Additional quality checks
+    if not details.get('overview') or len(details.get('overview', '').split()) < 10:
+        return False
+        
+    return True
+
+def get_content_rating(details):
+    """Extracts US content rating from TMDB data"""
+    try:
+        us_releases = [r for r in details.get('release_dates', {}).get('results', []) 
+                      if r.get('iso_3166_1') == 'US']
+        if us_releases and us_releases[0].get('release_dates'):
+            return us_releases[0]['release_dates'][0].get('certification', 'N/A')
+    except Exception:
+        pass
+    return 'N/A'
+
+def get_tmdb_movie_details(movie_id):
+    """Gets detailed movie info from TMDB"""
+    try:
+        response = requests.get(
+            f"https://api.themoviedb.org/3/movie/{movie_id}",
+            params={
+                "api_key": TMDB_API_KEY,
+                "append_to_response": "credits,genres,release_dates"
+            },
+            timeout=3
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        return None
+
+def format_movie_result(movie, details):
+    """Formats movie data for template with all needed fields"""
+    directors = [d['name'] for d in details.get('credits', {}).get('crew', []) 
+                if d['job'] == 'Director']
+    release_year = movie.get('release_date', '')[:4] if movie.get('release_date') else 'N/A'
+    
+    return {
+        'tmdb_id': movie['id'],
+        'title': movie.get('title', 'Unknown Title'),
+        'year': release_year,
+        'poster': f"https://image.tmdb.org/t/p/w500{movie['poster_path']}" if movie.get('poster_path') else None,
+        'genre': ', '.join([g['name'] for g in details.get('genres', [])][:3]),
+        'rating': movie.get('vote_average', 0),
+        'overview': movie.get('overview', 'No description available'),
+        'director': ', '.join(directors[:2]) if directors else 'Unknown Director',
+        'content_rating': get_content_rating(details),
+        'match_reasons': {}  # To be filled by find_tmdb_recommendation
+    }
+
+def get_quality_fallback():
+    """Returns a high-quality fallback meeting all validation"""
+    params = {
+        "api_key": TMDB_API_KEY,
+        "sort_by": "popularity.desc",
+        "vote_count.gte": 1000,
+        "vote_average.gte": 6.0,
+        "page": 1
+    }
+    
+    try:
+        response = requests.get(
+            "https://api.themoviedb.org/3/discover/movie",
+            params=params,
+            timeout=3
+        )
+        if response.status_code == 200:
+            results = response.json().get('results', [])
+            for movie in results:
+                details = get_tmdb_movie_details(movie['id'])
+                if details and is_valid_movie(movie, details):
+                    return format_movie_result(movie, details)
+    except requests.RequestException:
+        pass
+    
+    # Ultimate fallback if all else fails
+    return {
+        'title': "Critically Acclaimed Film",
+        'year': datetime.now().year,
+        'poster': None,
+        'genre': "Drama",
+        'rating': 7.5,
+        'overview': "A highly-rated popular movie we think you'll enjoy",
+        'director': "Award-Winning Director",
+        'content_rating': "PG-13",
+        'match_reasons': {'fallback': 'Highly-rated film'}
+    }
+
+def get_genre_map():
+    """Returns mapping of genre names to TMDB IDs"""
+    return {
+        'action': 28, 'adventure': 12, 'animation': 16, 'comedy': 35,
+        'crime': 80, 'documentary': 99, 'drama': 18, 'family': 10751,
+        'fantasy': 14, 'history': 36, 'horror': 27, 'music': 10402,
+        'mystery': 9648, 'romance': 10749, 'science fiction': 878,
+        'thriller': 53, 'war': 10752, 'western': 37
+    }
