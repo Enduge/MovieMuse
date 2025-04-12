@@ -64,6 +64,7 @@
 
     <script>
         const apiKey = '1e9287fc';
+        const tmdbKey = '9069e9679489f7393d82ea5f5af0e201';
         const searchInput = document.getElementById('searchInput');
         const searchButton = document.getElementById('searchButton');
         const genreFilter = document.getElementById('genreFilter');
@@ -88,8 +89,72 @@
             return response.json();
         }
 
+        async function fetchTMDBDetails(imdbID) {
+            const url = `https://api.themoviedb.org/3/find/${imdbID}?api_key=${tmdbKey}&external_source=imdb_id`;
+            const response = await fetch(url);
+            return response.json();
+        }
+
+        async function fetchProviders(tmdbID) {
+            try {
+                const url = `https://api.themoviedb.org/3/movie/${tmdbID}/watch/providers?api_key=${tmdbKey}&region=US`;
+                const response = await fetch(url);
+                return response.json();
+            }
+            catch (error) {
+                console.error('Error fetching movie details:', error);
+                return null;  // Or handle the error as appropriate
+            }
+        }
+
+        // Function to create provider HTML
+        function createProvidersHTML(providers) {
+            if (!providers || !providers.results || !providers.results.US) {
+                return '<div class="providers-info">No streaming information available</div>';
+            }
+            
+            const usProviders = providers.results.US;
+            let providersHTML = '<div class="providers-info">';
+            
+            // Add streaming providers if available
+            if (usProviders.flatrate && usProviders.flatrate.length > 0) {
+                providersHTML += '<div class="provider-section"><strong>Stream on:</strong> ';
+                providersHTML += usProviders.flatrate.map(provider => 
+                    `<span class="provider-name">${provider.provider_name}</span>`
+                ).join(', ');
+                providersHTML += '</div>';
+            }
+            
+            // Add rent providers if available
+            if (usProviders.rent && usProviders.rent.length > 0) {
+                providersHTML += '<div class="provider-section"><strong>Rent on:</strong> ';
+                providersHTML += usProviders.rent.map(provider => 
+                    `<span class="provider-name">${provider.provider_name}</span>`
+                ).join(', ');
+                providersHTML += '</div>';
+            }
+            
+            // Add buy providers if available
+            if (usProviders.buy && usProviders.buy.length > 0) {
+                providersHTML += '<div class="provider-section"><strong>Buy on:</strong> ';
+                providersHTML += usProviders.buy.map(provider => 
+                    `<span class="provider-name">${provider.provider_name}</span>`
+                ).join(', ');
+                providersHTML += '</div>';
+            }
+            
+            // If no providers were found in any category
+            if (!usProviders.flatrate && !usProviders.rent && !usProviders.buy) {
+                providersHTML += '<div>No streaming information available</div>';
+            }
+            
+            providersHTML += '</div>';
+            return providersHTML;
+        }
+
         // Function to show movie details in modal
         function showMovieDetails(movieData) {
+            // First, render what we have
             movieDetails.innerHTML = `
                 <div class="modal-header">
                     <h2>${movieData.Title} (${movieData.Year})</h2>
@@ -112,6 +177,9 @@
                         <p><strong>Awards:</strong> ${movieData.Awards}</p>
                         <p><strong>IMDb Rating:</strong> ${movieData.imdbRating}/10 (${movieData.imdbVotes} votes)</p>
                         ${movieData.BoxOffice ? `<p><strong>Box Office:</strong> ${movieData.BoxOffice}</p>` : ''}
+                        <div id="modal-providers" class="providers-container">
+                            <p><strong>Loading streaming options...</strong></p>
+                        </div>
                     </div>
                 </div>
             `;
@@ -124,6 +192,29 @@
             dislikeBtn.addEventListener('click', () => reactToMovie(movieData, 'dislike'));
             
             modal.style.display = 'block';
+            
+            // Then fetch and add providers
+            const providerContainer = document.getElementById('modal-providers');
+            
+            // Get TMDB ID first
+            fetchTMDBDetails(movieData.imdbID).then(tmdbDetails => {
+                if (tmdbDetails && tmdbDetails.movie_results && tmdbDetails.movie_results.length > 0) {
+                    const tmdbID = tmdbDetails.movie_results[0].id;
+                    
+                    // Then fetch providers with that ID
+                    fetchProviders(tmdbID).then(providers => {
+                        providerContainer.innerHTML = createProvidersHTML(providers);
+                    }).catch(error => {
+                        console.error('Error fetching providers:', error);
+                        providerContainer.innerHTML = '<div class="providers-info">Unable to load streaming information</div>';
+                    });
+                } else {
+                    providerContainer.innerHTML = '<div class="providers-info">No streaming information available</div>';
+                }
+            }).catch(error => {
+                console.error('Error fetching TMDB details:', error);
+                providerContainer.innerHTML = '<div class="providers-info">Unable to load streaming information</div>';
+            });
         }
 
         // Function to handle like/dislike actions
@@ -277,7 +368,6 @@
                 for (const movie of allMovies) {
                     if (count >= 30) break;
                     const movieDetails = await fetchMovieDetails(movie.imdbID);
-
                     const movieYear = parseInt(movieDetails.Year);
 
                     if (
@@ -291,6 +381,16 @@
                         (yearFromValue !== null && movieYear < yearFromValue)
                     ) {
                         continue;
+                    }
+
+                    const tmdbDetails = await fetchTMDBDetails(movie.imdbID);
+                    let tmdbID = null;
+                    let providersHTML = '<div class="providers-info">No streaming information available</div>';
+                    
+                    if (tmdbDetails && tmdbDetails.movie_results && tmdbDetails.movie_results.length > 0) {
+                        tmdbID = tmdbDetails.movie_results[0].id;
+                        const movieProviders = await fetchProviders(tmdbID);
+                        providersHTML = createProvidersHTML(movieProviders);
                     }
 
                     const movieCard = document.createElement('div');
