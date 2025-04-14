@@ -16,6 +16,9 @@ from collections import Counter
 import requests
 from django.conf import settings
 from datetime import datetime
+from django.views.decorators.http import require_GET
+from django.http import HttpResponse
+from django.urls import reverse
 TMDB_API_KEY = "9069e9679489f7393d82ea5f5af0e201"
 def get_tmdb_id_from_imdb(imdb_id):
     try:
@@ -378,10 +381,16 @@ def submit_movie_criteria(request, party_id):
 @login_required
 def choose_movie(request, party_id):
     party = get_object_or_404(WatchParty, id=party_id)
-    movies = list(party.movies.all())
-    selected_movie = random.choice(movies) if movies else None
     
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':  # Check if it's an AJAX request
+    if request.method == "POST" and "initiate_search" in request.POST:
+        # Store that search was initiated
+        party.search_initiated = True
+        party.save()
+        return redirect('users:watchparty_result', party_id=party.id)
+    
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        movies = list(party.movies.all())
+        selected_movie = random.choice(movies) if movies else None
         return JsonResponse({
             "selected_movie": {
                 "genre": selected_movie.genre if selected_movie else None,
@@ -390,48 +399,100 @@ def choose_movie(request, party_id):
             }
         })
     
-    return render(request, "users/watchparty_result.html", {"selected_movie": selected_movie, "party": party})
+    return redirect('users:watchparty_result', party_id=party.id)
 
 @login_required
 def watchparty_result(request, party_id):
-    user = request.user
     party = get_object_or_404(WatchParty, id=party_id)
     
-    # Get all user reactions
-    user_reactions = MovieReaction.objects.filter(user=user).select_related('movie')
-    liked_movies = [r.movie for r in user_reactions if r.reaction_type == 'like']
-    disliked_movies = [r.movie for r in user_reactions if r.reaction_type == 'dislike']
+    # Collect all members' preferences
+    all_liked = []
+    all_disliked = []
+    member_preferences = {}
     
-    # Get all movie IDs the user has already rated
-    rated_movie_ids = {m.imdb_id for m in liked_movies + disliked_movies}
+    for member in party.members.all():
+        reactions = MovieReaction.objects.filter(user=member).select_related('movie')
+        liked = [r.movie for r in reactions if r.reaction_type == 'like']
+        disliked = [r.movie for r in reactions if r.reaction_type == 'dislike']
+        
+        # Analyze individual preferences
+        individual_prefs = {
+            'genres': Counter(),
+            'years': [],
+            'ratings': Counter(),
+            'disliked_genres': Counter()
+        }
+        
+        # Process liked movies
+        for movie in liked:
+            if movie.genre:
+                genres = [g.strip().lower() for g in movie.genre.split(',')]
+                individual_prefs['genres'].update(genres)
+            if movie.year:
+                try:
+                    year = int(movie.year)
+                    individual_prefs['years'].append(year)
+                except ValueError:
+                    pass
+            if movie.rated:
+                individual_prefs['ratings'][movie.rated] += 1
+        
+        # Process disliked movies
+        for movie in disliked:
+            if movie.genre:
+                genres = [g.strip().lower() for g in movie.genre.split(',')]
+                individual_prefs['disliked_genres'].update(genres)
+        
+        # Store analyzed preferences
+        member_preferences[member] = {
+            'top_genres': [g for g, _ in individual_prefs['genres'].most_common(3)],
+            'year_range': (
+                min(individual_prefs['years']) if individual_prefs['years'] else None,
+                max(individual_prefs['years']) if individual_prefs['years'] else None
+            ),
+            'ratings': [r for r, _ in individual_prefs['ratings'].most_common(2)],
+            'disliked_genres': list(individual_prefs['disliked_genres'].keys()),
+            'liked_movies': liked,
+            'disliked_movies': disliked
+        }
+        
+        all_liked.extend(liked)
+        all_disliked.extend(disliked)
     
-    # Get guaranteed recommendation with reasoning
-    recommendation_result = get_guaranteed_recommendation(liked_movies, disliked_movies, rated_movie_ids)
+    # Get combined rated movie IDs
+    rated_imdb_ids = {m.imdb_id for m in all_liked + all_disliked}
+    rated_tmdb_ids = {m.tmdb_id for m in all_liked + all_disliked if m.tmdb_id}
+    rated_movie_ids = rated_imdb_ids | rated_tmdb_ids
     
-    # Extract preferences for display
-    preferences = analyze_preferences(liked_movies, disliked_movies)
-    preferred_genres = [g for g, _ in preferences['genres'].most_common(3) 
-                       if g not in preferences['disliked_genres']]
-    disliked_genres = list(preferences['disliked_genres'].keys())
-    
-    # Calculate year range
-    if preferences['years']:
-        avg_year = sum(preferences['years']) / len(preferences['years'])
-        year_range = (int(avg_year - 5), int(avg_year + 5))
+    # Get group recommendation
+    if all_liked:  # Only try if at least one member has liked movies
+        recommendation_result = get_guaranteed_recommendation(all_liked, all_disliked, rated_movie_ids)
     else:
-        year_range = (datetime.now().year - 5, datetime.now().year)
+        recommendation_result = {
+            'movie': get_quality_fallback(),
+            'is_fallback': True,
+            'reasons': {'fallback': 'No liked movies in the group to base recommendations on'}
+        }
     
-    return render(request, "users/watchparty_result.html", {
+    # Analyze group preferences
+    preferences = analyze_preferences(all_liked, all_disliked)
+    
+    context = {
         "party": party,
+        "member_preferences": member_preferences,
         "recommended_movie": recommendation_result['movie'],
         "is_fallback": recommendation_result['is_fallback'],
-        "preferred_genres": preferred_genres,
-        "disliked_genres": disliked_genres,
-        "year_range": year_range,
+        "preferred_genres": [g for g, _ in preferences['genres'].most_common(3) if g not in preferences['disliked_genres']],
+        "disliked_genres": list(preferences['disliked_genres'].keys()),
+        "year_range": (
+            int(sum(preferences['years'])/len(preferences['years']))-5 if preferences['years'] else datetime.now().year-5,
+            int(sum(preferences['years'])/len(preferences['years']))+5 if preferences['years'] else datetime.now().year+5
+        ),
         "preferred_ratings": [r for r, _ in preferences['ratings'].most_common(2)],
         "match_reasons": recommendation_result.get('reasons', {}),
         "now": datetime.now()
-    })
+    }
+    return render(request, "users/watchparty_result.html", context)
 
 def get_guaranteed_recommendation(liked_movies, disliked_movies, rated_movie_ids):
     """Returns at least one recommendation with reasoning data"""
@@ -767,3 +828,67 @@ def get_genre_map():
         'mystery': 9648, 'romance': 10749, 'science fiction': 878,
         'thriller': 53, 'war': 10752, 'western': 37
     }
+
+@login_required
+def join_party(request, party_id):
+    party = get_object_or_404(WatchParty, id=party_id)
+    if request.user not in party.members.all():
+        party.members.add(request.user)
+        messages.success(request, f"You've joined {party.name}!")
+    return redirect('users:watch_party_submit', party_id=party.id)
+
+@require_GET
+@login_required
+def party_members(request, party_id):
+    """HTMX endpoint for live member updates"""
+    party = get_object_or_404(WatchParty, id=party_id)
+    return render(request, 'users/_member_list.html', {'party': party})
+
+@login_required
+@require_GET
+def check_search_status(request, party_id):
+    party = get_object_or_404(WatchParty, id=party_id)
+    if party.search_initiated:
+        return HttpResponse(
+            status=204, 
+            headers={'HX-Redirect': reverse('users:watchparty_result', args=[party.id])}
+        )
+    return HttpResponse(status=200)
+
+def analyze_individual_preferences(member):
+    """Analyzes a single member's movie preferences"""
+    reactions = MovieReaction.objects.filter(user=member).select_related('movie')
+    liked_movies = [r.movie for r in reactions if r.reaction_type == 'like']
+    disliked_movies = [r.movie for r in reactions if r.reaction_type == 'dislike']
+    
+    # Initialize preferences dictionary
+    preferences = {
+        'genres': Counter(),
+        'years': [],
+        'ratings': Counter(),
+        'disliked_genres': Counter(),
+        'liked_movies': liked_movies,
+        'disliked_movies': disliked_movies
+    }
+    
+    # Analyze liked movies
+    for movie in liked_movies:
+        if movie.genre:
+            genres = [g.strip().lower() for g in movie.genre.split(',')]
+            preferences['genres'].update(genres)
+        if movie.year:
+            try:
+                year = int(movie.year)
+                preferences['years'].append(year)
+            except ValueError:
+                pass
+        if movie.rated:
+            preferences['ratings'][movie.rated] += 1
+    
+    # Analyze disliked movies
+    for movie in disliked_movies:
+        if movie.genre:
+            genres = [g.strip().lower() for g in movie.genre.split(',')]
+            preferences['disliked_genres'].update(genres)
+    
+    return preferences
