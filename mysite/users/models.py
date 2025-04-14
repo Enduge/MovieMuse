@@ -67,6 +67,7 @@ class WatchParty(models.Model):
     host = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hosted_parties')
     members = models.ManyToManyField(User, related_name='watch_parties')
     created_at = models.DateTimeField(auto_now_add=True)
+    search_initiated = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
