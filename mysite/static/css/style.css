@@ -677,6 +677,7 @@ a {
     border-radius: 8px;
     margin-top: 20px;
 }
+
 .providers-info {
     margin-top: 10px;
     margin-bottom: 10px;
@@ -728,3 +729,165 @@ a {
     padding: 8px;
     border-radius: 8px;
 }
+
+/* Invite Link Box */
+.invite-link-box {
+  display: flex;
+  margin: 15px 0;
+}
+.invite-link-box input {
+  flex-grow: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+}
+.invite-link-box button {
+  margin-left: 10px;
+}
+
+/* Find Movie Button */
+.find-movie-btn {
+  background: #4CAF50;
+  color: white;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  margin-top: 20px;
+}
+.find-movie-btn:hover {
+  background: #45a049;
+}
+
+/* Waiting Message */
+.waiting-msg {
+  font-style: italic;
+  color: #666;
+  margin-top: 20px;
+}
+
+/* Invite Link Box */
+.invite-link-box {
+    display: flex;
+    margin: 15px 0;
+  }
+  .invite-link-box input {
+    flex-grow: 1;
+    padding: 8px;
+    border: 1px solid #ddd;
+  }
+  .invite-link-box button {
+    margin-left: 10px;
+  }
+  
+  /* Find Movie Button */
+  .find-movie-btn {
+    background: #4CAF50;
+    color: white;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    margin-top: 20px;
+  }
+  .find-movie-btn:hover {
+    background: #45a049;
+  }
+  
+  /* Waiting Message */
+  .waiting-msg {
+    font-style: italic;
+    color: #666;
+    margin-top: 20px;
+  }
+
+  .member-preferences {
+    margin: 30px 0;
+    padding: 20px;
+    background: #f5f5f5;
+    border-radius: 10px;
+}
+.member-card {
+    margin-bottom: 15px;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/*Some CSS for the submit file*/
+.watchparty-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .invite-section {
+    background: #f0f7ff;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 25px;
+  }
+  .invite-link-box {
+    display: flex;
+    margin: 15px 0;
+  }
+  .invite-link-box input {
+    flex-grow: 1;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px 0 0 4px;
+  }
+  .invite-link-box button {
+    padding: 8px 15px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 0 4px 4px 0;
+    cursor: pointer;
+  }
+  .member-list {
+    background: #f9f9f9;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 25px;
+  }
+  .member-list ul {
+    list-style: none;
+    padding: 0;
+  }
+  .member-list li {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+  }
+  .member-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    margin-right: 10px;
+    object-fit: cover;
+  }
+  .find-movie-btn {
+    background: #4CAF50;
+    color: white;
+    padding: 12px 25px;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: background 0.3s;
+  }
+  .find-movie-btn:hover {
+    background: #45a049;
+  }
+  .waiting-msg {
+    font-style: italic;
+    color: #666;
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
