@@ -21,4 +21,7 @@ urlpatterns = [
     path('reject_friend_request/<int:friendship_id>/', views.reject_friend_request, name="reject_friend_request"),
     path('remove_friend/<int:friendship_id>/', views.remove_friend, name="remove_friend"),
     path('friends/', views.friend_list, name="friend_list"),
+    path('party/<int:party_id>/members/', views.party_members, name='party_members'),
+    path('party/join/<int:party_id>/', views.join_party, name='join_party'),
+    path('watchparty/<int:party_id>/check_status/', views.check_search_status, name='check_search_status'),
 ]
