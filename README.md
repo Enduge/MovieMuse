@@ -9,3 +9,6 @@ cd (MovieMuse folder path)/mysite
 
 
 py manage.py runserver
+
+
+Created by Jacob Nelson, Alan Ribiev, Fardeen Khan, and Evan Pereira
